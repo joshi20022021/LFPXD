@@ -2,7 +2,8 @@ import tkinter as tk
 from tkinter import filedialog, messagebox, Scrollbar
 from prettytable import PrettyTable
 from analizadorlexico import AnalizadorLexicoSintactico
-from analizadorlexico import traducir_comandos_nosql_a_mongodb
+from analizadorlexico import NoSQLToMongoDBTranslator
+
 
 class VentanaPrincipal:
     def __init__(self, master):
@@ -62,7 +63,7 @@ class VentanaPrincipal:
         self.text1_frame = tk.Frame(master)
         self.text1_frame.pack(side="left", fill="both", expand=True, padx=10, pady=10)
 
-        self.text1 = tk.Text(self.text1_frame, bg="white", fg="black", font=("Courier", 10), wrap="word", width=60)
+        self.text1 = tk.Text(self.text1_frame, bg="white", fg="black", font=("Courier", 10), wrap="word", width=80)
         self.text1.pack(side="left", fill="both", expand=True)
         
         self.scrollbar1 = Scrollbar(self.text1_frame, orient="vertical", command=self.text1.yview)
@@ -110,24 +111,25 @@ class VentanaPrincipal:
     def abrir_archivo(self):
         archivo = filedialog.askopenfilename(filetypes=(("Archivos TXT", "*.txt"), ("Todos los archivos", "*.*")))
         if archivo:
-            with open(archivo, 'r') as f:
+            with open(archivo, 'r', encoding='utf-8') as f:
                 contenido = f.read()
                 self.text1.delete("1.0", "end")
                 self.text1.insert("1.0", contenido)
 
-def traducir(self):
-    texto_nosql = self.text1.get("1.0", "end-1c")
-    comandos_mongodb, errores = traducir_comandos_nosql_a_mongodb(texto_nosql)  
+    def traducir(self):
+        texto_nosql = self.text1.get("1.0", "end-1c")
+        translator = NoSQLToMongoDBTranslator()
+        comandos_mongodb, errores = translator.traducir(texto_nosql)
 
-    if isinstance(comandos_mongodb, str):
         self.text2.delete("1.0", tk.END)
-        self.text2.insert(tk.END, comandos_mongodb)
-    else:
-        self.text2.delete("1.0", tk.END)
-        self.text2.insert(tk.END, "Error: Error al traducir los comandos.\n")
-        for error in errores:
-            descripcion_error = error.get("descripcion", "Error desconocido")
-            self.text2.insert(tk.END, descripcion_error + "\n")
+        if comandos_mongodb:
+            for comando in comandos_mongodb:
+                self.text2.insert(tk.END, comando + "")
+        else:
+            self.text2.insert(tk.END, "Error: Error al traducir los comandos.\n")
+            for error in errores:
+                descripcion_error = error.get("descripcion", "Error desconocido")
+                self.text2.insert(tk.END, descripcion_error + "\n")
 
 
     def ver_tokens(self):

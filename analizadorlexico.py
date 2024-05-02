@@ -236,119 +236,159 @@ class AnalizadorLexicoSintactico:
 
         return self.tokens, self.errores_lexicos, self.errores_sintacticos
 
-    def traducir_comandos_nosql_a_mongodb(texto_nosql):
+class NoSQLToMongoDBTranslator:
+    def traducir(self, texto_nosql):
+        lineas = texto_nosql.split('\n')
         comandos_mongodb = []
         errores = []
 
-        lineas = texto_nosql.split('\n')
-
         for linea in lineas:
             linea = linea.strip()
+            if linea:
+                resultado = self.traducir_linea(linea)
+                if isinstance(resultado, str):
+                    comandos_mongodb.append(resultado)
+                elif isinstance(resultado, tuple):
+                    comando, error = resultado
+                    if comando:
+                        comandos_mongodb.append(comando)
+                    if error:
+                        if isinstance(error, str):
+                            errores.append(error)
+                        elif isinstance(error, dict):
+                            errores.append(error["descripcion"])
 
-            if linea.startswith('CrearBD'):
-                partes = linea.split()
-                if len(partes) >= 4 and partes[2] == '=':
-                    nombre_bd = partes[3]
-                    comando_mongodb = f'db = use("{nombre_bd}");'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif linea.startswith('EliminarBD'):
-                partes = linea.split()
-                if len(partes) >= 4 and partes[2] == '=':
-                    nombre_bd = partes[3]
-                    comando_mongodb = f'db.dropDatabase("{nombre_bd}");'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif linea.startswith('CrearColeccion'):
-                partes = linea.split('"')
-                if len(partes) >= 2:
-                    nombre_coleccion = partes[1]
-                    comando_mongodb = f'db.createCollection("{nombre_coleccion}");'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif linea.startswith('EliminarColeccion'):
-                partes = linea.split('"')
-                if len(partes) >= 2:
-                    nombre_coleccion = partes[1]
-                    comando_mongodb = f'db.{nombre_coleccion}.drop();'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif 'InsertarUnico' in linea:
-                partes = linea.split('"')
-                if len(partes) >= 2:
-                    nombre_coleccion = partes[1]
-                    json_data = linea[linea.find('{'):]
-                    comando_mongodb = f'db.{nombre_coleccion}.insertOne({json_data});'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif 'ActualizarUnico' in linea:
-                partes = linea.split('"')
-                if len(partes) >= 6:
-                    nombre_coleccion = partes[1]
-                    filtro = partes[3]
-                    actualizacion = partes[5]
-                    comando_mongodb = f'db.{nombre_coleccion}.updateOne({filtro},{actualizacion});'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif 'EliminarUnico' in linea:
-                partes = linea.split('"')
-                if len(partes) >= 4:
-                    nombre_coleccion = partes[1]
-                    filtro = partes[3]
-                    comando_mongodb = f'db.{nombre_coleccion}.deleteOne({filtro});'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif 'BuscarTodo' in linea:
-                partes = linea.split('"')
-                if len(partes) >= 2:
-                    nombre_coleccion = partes[1]
-                    comando_mongodb = f'db.{nombre_coleccion}.find();'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif 'BuscarUnico' in linea:
-                partes = linea.split('"')
-                if len(partes) >= 2:
-                    nombre_coleccion = partes[1]
-                    comando_mongodb = f'db.{nombre_coleccion}.findOne();'
-                    comandos_mongodb.append(comando_mongodb)
-                else:
-                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
-            elif linea.startswith('//') or linea.startswith('#') or linea.startswith('---'):
-                # Comentarios de una línea, se traducen a #
-                comando_mongodb = f'# {linea[2:].strip()}'
-                comandos_mongodb.append(comando_mongodb)
-            elif linea.startswith('/*'):
-                # Inicio de comentario multilínea
-                comando_mongodb = '"""'
-                comandos_mongodb.append(comando_mongodb)
-                while linea and not linea.startswith('*/'):
-                    try:
-                        linea = next(iter(lineas), '')
-                        linea = linea.strip()
-                        if linea:
-                            comando_mongodb = f'{linea}'
-                            comandos_mongodb.append(comando_mongodb)
-                    except StopIteration:
-                        errores.append({"tipo": "Error sintáctico", "descripcion": "Comentario multilínea sin cerrar"})
-                        break
-                if linea.startswith('*/'):
-                    comando_mongodb = '"""'
-                    comandos_mongodb.append(comando_mongodb)
-            elif not linea:
-                # Línea vacía, no se traduce
-                pass
+        # Convertir la lista de comandos en una cadena
+        comandos_str = '\n'.join([str(item) for item in comandos_mongodb])
+
+        # Unir los errores en una cadena
+        errores_str = '\n'.join(errores)
+
+        return comandos_str, errores_str
+
+    def traducir_linea(self, linea):
+        if linea.startswith('CrearBD'):
+            return self.traducir_crear_bd(linea)
+        elif linea.startswith('EliminarBD'):
+            return self.traducir_eliminar_bd(linea)
+        elif linea.startswith('CrearColeccion'):
+            return self.traducir_crear_coleccion(linea)
+        elif linea.startswith('EliminarColeccion'):
+            return self.traducir_eliminar_coleccion(linea)
+        elif 'InsertarUnico' in linea:
+            return self.traducir_insertar_unico(linea)
+        elif 'ActualizarUnico' in linea:
+            return self.traducir_actualizar_unico(linea)
+        elif 'EliminarUnico' in linea:
+            return self.traducir_eliminar_unico(linea)
+        elif 'BuscarTodo' in linea:
+            return self.traducir_buscar_todo(linea)
+        elif 'BuscarUnico' in linea:
+            return self.traducir_buscar_unico(linea)
+        elif linea.startswith('//') or linea.startswith('#') or linea.startswith('---'):
+            return self.traducir_comentario_una_linea(linea)
+        elif linea.startswith('/*'):
+            return self.traducir_comentario_multilinea(linea.split('\n'))
+        else:
+            # Devuelve un comentario con el error sintáctico
+            return None, {"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"}
+
+    def obtener_nombre_variable(self, linea):
+        partes = linea.split()
+        if len(partes) >= 2:
+            return partes[1].strip('();')
+        else:
+            return None
+
+    def traducir_crear_bd(self, linea):
+        nombre_variable = self.obtener_nombre_variable(linea)
+        if nombre_variable:
+            return f'db = use("{nombre_variable}");', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer el nombre de la base de datos."}
+
+    def traducir_eliminar_bd(self, linea):
+        nombre_variable = self.obtener_nombre_variable(linea)
+        if nombre_variable:
+            return f'db.dropDatabase("{nombre_variable}");', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer el nombre de la base de datos."}
+
+    def traducir_crear_coleccion(self, linea):
+        partes = linea.split('"')
+        if len(partes) >= 2:
+            nombre_coleccion = partes[1]
+            return f'db.createCollection("{nombre_coleccion}");', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer el nombre de la colección."}
+
+    def traducir_eliminar_coleccion(self, linea):
+        partes = linea.split('"')
+        if len(partes) >= 2:
+            nombre_coleccion = partes[1]
+            return f'db.{nombre_coleccion}.drop();', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer el nombre de la colección."}
+
+    def traducir_insertar_unico(self, linea):
+        partes = linea.split('"')
+        if len(partes) >= 2:
+            nombre_coleccion = partes[1]
+            json_data = linea[linea.find('{'):linea.rfind('}') + 1]
+            return f'db.{nombre_coleccion}.insertOne({json_data});', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer el nombre de la colección."}
+
+    def traducir_actualizar_unico(self, linea):
+        partes = linea.split('"')
+        if len(partes) >= 6:
+            nombre_coleccion = partes[1]
+            filtro = partes[3].strip()
+            actualizacion = partes[5].strip()
+            return f'db.{nombre_coleccion}.updateOne({filtro},{actualizacion});', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer la información necesaria para actualizar un documento."}
+
+    def traducir_eliminar_unico(self, linea):
+        partes = linea.split('"')
+        if len(partes) >= 4:
+            nombre_coleccion = partes[1]
+            filtro = partes[3].strip()
+            return f'db.{nombre_coleccion}.deleteOne({filtro});', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer la información necesaria para eliminar un documento."}
+
+    def traducir_buscar_todo(self, linea):
+        partes = linea.split('"')
+        if len(partes) >= 2:
+            nombre_coleccion = partes[1]
+            return f'db.{nombre_coleccion}.find();', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer el nombre de la colección."}
+
+    def traducir_buscar_unico(self, linea):
+        partes = linea.split('"')
+        if len(partes) >= 2:
+            nombre_coleccion = partes[1]
+            return f'db.{nombre_coleccion}.findOne();', None
+        else:
+            return None, {"tipo": "Error sintáctico", "descripcion": "No se pudo extraer el nombre de la colección."}
+
+    def traducir_comentario_una_linea(self, linea):
+        return f'# {linea[3:].strip()}', None
+
+    def traducir_comentario_multilinea(self, lineas):
+        comentario = []
+        for linea in lineas:
+            if linea.startswith('/*'):
+                comentario.append(linea[linea.find('/*') + 2:])
+            elif '*/' in linea:
+                comentario.append(linea[:linea.find('*/')])
+                break
             else:
-                errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+                comentario.append(linea)
+        return "''' " + ' '.join(comentario) + " '''", None
 
-        return comandos_mongodb, errores
 
 class AnalizadorSintactico:
     def __init__(self):
