@@ -198,9 +198,16 @@ class AnalizadorLexicoSintactico:
                 continue
 
             elif estado == 17:
-                if caracter in ['"', '“', '”', ':', '{', '}']:
+                if caracter == '"':
                     estado = 19
                     buffer += caracter
+                elif caracter == '{':
+                    estado = 21  # Cambiar al estado 21 para manejar el contenido entre llaves como un solo token
+                    buffer += caracter  # Agregar la llave de apertura al buffer
+                elif caracter == '}':
+                    self.agregarToken('Llave_C', caracter, linea, columna)  # Agregar el token de llave cerrada
+                elif caracter in ['“', '”', ':', ',', ';']:
+                    self.agregarToken('Caracter_Especial', caracter, linea, columna)
                 elif caracter == '\n':
                     linea += 1
                     columna = 1
@@ -212,9 +219,7 @@ class AnalizadorLexicoSintactico:
                         else:
                             self.agregarToken('Identificador', token, linea, columna - len(token))
                     buffer = ''
-                    estado = 17
                 else:
-                    estado = 18
                     buffer += caracter
 
             elif estado == 18:
@@ -230,11 +235,26 @@ class AnalizadorLexicoSintactico:
                 estado = 0
                 continue
 
+            elif estado == 20:
+                if caracter != '}':
+                    buffer += caracter
+                else:
+                    self.agregarToken('Cadena', buffer.strip(), linea, columna - len(buffer))  # Agregar el token de cadena
+                    self.agregarToken('Llave_C', caracter, linea, columna)  # Agregar el token de llave cerrada
+                    estado = 0
+
+            elif estado == 21:
+                buffer += caracter
+                if caracter == '}':
+                    self.agregarToken('Cadena', buffer.strip(), linea, columna - len(buffer))  # Agregar el token de cadena
+                    estado = 0
+
             i += 1
 
         self.analizador_sintactico.analizar_sintacticamente(self.tokens)
 
         return self.tokens, self.errores_lexicos, self.errores_sintacticos
+
 
 class NoSQLToMongoDBTranslator:
     def traducir(self, texto_nosql):
