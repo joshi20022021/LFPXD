@@ -1,13 +1,17 @@
-from Errores import Error
 from Tokens import Token
 
-class AnalizadorLexico:
+class AnalizadorLexicoSintactico:
     def __init__(self):
         self.tokens = []
-        self.errores = []
+        self.errores_lexicos = []
+        self.errores_sintacticos = []
+        self.caracteres_validos = ['{', '}', '"', '“', '”', ',', ':', '=', ';', '-', '*', '/']
+        self.palabras_reservadas = ['CrearBD', 'EliminarBD', 'CrearColeccion', 'EliminarColeccion',
+                                    'InsertarUnico', 'ActualizarUnico', 'EliminarUnico', 'BuscarTodo', 'BuscarUnico']
+        self.analizador_sintactico = AnalizadorSintactico()
 
     def agregarError(self, tipo, linea, columna, caracter=None, token_esperado=None, descripcion=None):
-        self.errores.append({
+        self.errores_lexicos.append({
             "tipo": tipo,
             "linea": linea,
             "columna": columna,
@@ -64,7 +68,7 @@ class AnalizadorLexico:
                     columna = 1
                 elif caracter == '#':
                     pass
-                else:
+                elif caracter not in self.caracteres_validos:
                     self.agregarError('Léxico', linea, columna, caracter, descripcion=f"Carácter no reconocido: {caracter}")
                     estado = 0
                     buffer = ''
@@ -83,7 +87,7 @@ class AnalizadorLexico:
                     estado = 3
                     buffer += caracter
                 else:
-                    self.agregarError(buffer, linea, columna)
+                    self.agregarError('Léxico', linea, columna, buffer, "Se esperaba un segundo '-'")
                     estado = 0
                     buffer = ''
 
@@ -115,7 +119,7 @@ class AnalizadorLexico:
                     estado = 7
                     buffer += caracter
                 else:
-                    self.agregarError('Caracter no reconocido', caracter, linea, columna)  # Aquí se debe pasar el carácter específico
+                    self.agregarError('Léxico', linea, columna, buffer, "Se esperaba un '*'")
                     estado = 0
                     buffer = ''
 
@@ -153,8 +157,8 @@ class AnalizadorLexico:
                     buffer += caracter
                     columna += 1  # Incrementa la columna para cada carácter alfanumérico
                 else:
-                    if buffer in ['CrearBD', 'EliminarBD', 'CrearColeccion', 'EliminarColeccion', 'InsertarUnico', 'ActualizarUnico', 'EliminarUnico', 'BuscarTodo', 'BuscarUnico']:
-                        self.agregarToken(f'Resevada_{buffer}', buffer, linea, columna - len(buffer))
+                    if buffer in self.palabras_reservadas:
+                        self.agregarToken(f'Reservada_{buffer}', buffer, linea, columna - len(buffer))
                         buffer = ''
                         estado = 0
                     else:
@@ -194,25 +198,30 @@ class AnalizadorLexico:
                 continue
 
             elif estado == 17:
-                if caracter != '"':
-                    if caracter == '\n':
-                        linea += 1
-                        columna = 1
-                    elif caracter == '{':
-                        estado = 20
-                        buffer += caracter
-                    else:
-                        estado = 18
-                        buffer += caracter
-                else:
+                if caracter in ['"', '“', '”', ':', '{', '}']:
                     estado = 19
+                    buffer += caracter
+                elif caracter == '\n':
+                    linea += 1
+                    columna = 1
+                elif caracter.isspace():
+                    tokens_dentro_comillas = buffer.split()
+                    for token in tokens_dentro_comillas:
+                        if token in self.palabras_reservadas:
+                            self.agregarToken(f'Reservada_{token}', token, linea, columna - len(token))
+                        else:
+                            self.agregarToken('Identificador', token, linea, columna - len(token))
+                    buffer = ''
+                    estado = 17
+                else:
+                    estado = 18
                     buffer += caracter
 
             elif estado == 18:
-                if caracter != '"':
+                if caracter in ['"', '”']:
+                    estado = 19
                     buffer += caracter
                 else:
-                    estado = 19
                     buffer += caracter
 
             elif estado == 19:
@@ -221,40 +230,149 @@ class AnalizadorLexico:
                 estado = 0
                 continue
 
-            elif estado == 20:
-                if caracter != '}':
-                    estado = 21
-                    if caracter == '\n':
-                        linea += 1
-                        columna = 1
-                    else:
-                        buffer += caracter
-                else:
-                    estado = 22
-                    buffer += caracter
-
-            elif estado == 21:
-                if caracter != ')':
-                    estado = 21
-                    if caracter == '\n':
-                        linea += 1
-                        columna = 1
-                    else:
-                        buffer += caracter
-                else:
-                    estado = 22
-                    buffer += caracter
-
-            elif estado == 22:
-                try:
-                    buffer = buffer[:-1]
-                except:
-                    pass
-                self.agregarToken('Data', buffer, linea, columna)
-                buffer = ''
-                estado = 0
-                i -= 1
-
             i += 1
 
-        return self.tokens, self.errores
+        self.analizador_sintactico.analizar_sintacticamente(self.tokens)
+
+        return self.tokens, self.errores_lexicos, self.errores_sintacticos
+
+    def traducir_comandos_nosql_a_mongodb(texto_nosql):
+        comandos_mongodb = []
+        errores = []
+
+        lineas = texto_nosql.split('\n')
+
+        for linea in lineas:
+            linea = linea.strip()
+
+            if linea.startswith('CrearBD'):
+                partes = linea.split()
+                if len(partes) >= 4 and partes[2] == '=':
+                    nombre_bd = partes[3]
+                    comando_mongodb = f'db = use("{nombre_bd}");'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif linea.startswith('EliminarBD'):
+                partes = linea.split()
+                if len(partes) >= 4 and partes[2] == '=':
+                    nombre_bd = partes[3]
+                    comando_mongodb = f'db.dropDatabase("{nombre_bd}");'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif linea.startswith('CrearColeccion'):
+                partes = linea.split('"')
+                if len(partes) >= 2:
+                    nombre_coleccion = partes[1]
+                    comando_mongodb = f'db.createCollection("{nombre_coleccion}");'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif linea.startswith('EliminarColeccion'):
+                partes = linea.split('"')
+                if len(partes) >= 2:
+                    nombre_coleccion = partes[1]
+                    comando_mongodb = f'db.{nombre_coleccion}.drop();'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif 'InsertarUnico' in linea:
+                partes = linea.split('"')
+                if len(partes) >= 2:
+                    nombre_coleccion = partes[1]
+                    json_data = linea[linea.find('{'):]
+                    comando_mongodb = f'db.{nombre_coleccion}.insertOne({json_data});'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif 'ActualizarUnico' in linea:
+                partes = linea.split('"')
+                if len(partes) >= 6:
+                    nombre_coleccion = partes[1]
+                    filtro = partes[3]
+                    actualizacion = partes[5]
+                    comando_mongodb = f'db.{nombre_coleccion}.updateOne({filtro},{actualizacion});'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif 'EliminarUnico' in linea:
+                partes = linea.split('"')
+                if len(partes) >= 4:
+                    nombre_coleccion = partes[1]
+                    filtro = partes[3]
+                    comando_mongodb = f'db.{nombre_coleccion}.deleteOne({filtro});'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif 'BuscarTodo' in linea:
+                partes = linea.split('"')
+                if len(partes) >= 2:
+                    nombre_coleccion = partes[1]
+                    comando_mongodb = f'db.{nombre_coleccion}.find();'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif 'BuscarUnico' in linea:
+                partes = linea.split('"')
+                if len(partes) >= 2:
+                    nombre_coleccion = partes[1]
+                    comando_mongodb = f'db.{nombre_coleccion}.findOne();'
+                    comandos_mongodb.append(comando_mongodb)
+                else:
+                    errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+            elif linea.startswith('//') or linea.startswith('#') or linea.startswith('---'):
+                # Comentarios de una línea, se traducen a #
+                comando_mongodb = f'# {linea[2:].strip()}'
+                comandos_mongodb.append(comando_mongodb)
+            elif linea.startswith('/*'):
+                # Inicio de comentario multilínea
+                comando_mongodb = '"""'
+                comandos_mongodb.append(comando_mongodb)
+                while linea and not linea.startswith('*/'):
+                    try:
+                        linea = next(iter(lineas), '')
+                        linea = linea.strip()
+                        if linea:
+                            comando_mongodb = f'{linea}'
+                            comandos_mongodb.append(comando_mongodb)
+                    except StopIteration:
+                        errores.append({"tipo": "Error sintáctico", "descripcion": "Comentario multilínea sin cerrar"})
+                        break
+                if linea.startswith('*/'):
+                    comando_mongodb = '"""'
+                    comandos_mongodb.append(comando_mongodb)
+            elif not linea:
+                # Línea vacía, no se traduce
+                pass
+            else:
+                errores.append({"tipo": "Error sintáctico", "descripcion": f"Línea no reconocida: {linea}"})
+
+        return comandos_mongodb, errores
+
+class AnalizadorSintactico:
+    def __init__(self):
+        self.errores_sintacticos = []
+        self.palabras_reservadas = ['CrearBD', 'EliminarBD', 'CrearColeccion', 'EliminarColeccion',
+                                    'InsertarUnico', 'ActualizarUnico', 'EliminarUnico', 'BuscarTodo', 'BuscarUnico']
+
+    def agregarError(self, tipo, linea, columna, caracter=None, token_esperado=None, descripcion=None):
+        self.errores_sintacticos.append({
+            "tipo": tipo,
+            "linea": linea,
+            "columna": columna,
+            "caracter": caracter,
+            "token_esperado": token_esperado,
+            "descripcion": descripcion
+        })
+
+    def analizar_sintacticamente(self, tokens):
+        for token in tokens:
+            if token.tipo.startswith('Reservada'):
+                if token.contenido not in self.palabras_reservadas:
+                    self.agregarError('Sintáctico', token.linea, token.columna,
+                                      caracter=token.contenido,
+                                      token_esperado="Palabra reservada válida",
+                                      descripcion=f"Palabra reservada incorrecta: {token.contenido}")
+
+

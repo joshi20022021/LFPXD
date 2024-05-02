@@ -1,92 +1,61 @@
 from Errores import Error
 from Tokens import Token
-from prettytable import PrettyTable
 
 class AnalizadorSintactico:
+    palabras_reservadas = ['CrearBD', 'EliminarBD', 'CrearColeccion', 'EliminarColeccion',
+                           'InsertarUnico', 'ActualizarUnico', 'EliminarUnico', 'BuscarTodo', 'BuscarUnico']
+
     def __init__(self):
-        self.tokens = []
-        self.errores = []
-
-    def agregarError(self, tipo, linea, columna, caracter=None, token_esperado=None, descripcion=None):
-        self.errores.append({
-            "tipo": tipo,
-            "linea": linea,
-            "columna": columna,
-            "caracter": caracter,
-            "token_esperado": token_esperado,
-            "descripcion": descripcion
-        })
-
-    def agregarToken(self, tipo, token, linea, columna):
-        self.tokens.append(Token(tipo, token, linea, columna))
-
-    def obtener_token_actual(self):
-        if self.posicion < len(self.tokens):
-            return self.tokens[self.posicion]
-        else:
-            return None
-
-    def avanzar(self):
-        self.posicion += 1
-
-    def error(self, mensaje):
-        token_actual = self.obtener_token_actual()
-        if token_actual:
-            self.errores.append({
-                "tipo": "Sintáctico",
-                "mensaje": mensaje,
-                "token": token_actual
-            })
-
-    def emparejar(self, tipo_esperado):
-        token_actual = self.obtener_token_actual()
-        if token_actual and token_actual.tipo == tipo_esperado:
-            self.avanzar()
-        else:
-            self.error(f"Se esperaba un token de tipo '{tipo_esperado}' pero se encontró '{token_actual.tipo}'")
+        pass
 
     def analizar(self, tokens):
-        self.tokens = tokens
-        self.posicion = 0
-        while self.obtener_token_actual():
-            self.instruccion()
+        errores_sintacticos = []
 
-    def instruccion(self):
-        token_actual = self.obtener_token_actual()
+        # Función auxiliar para agregar errores
+        def agregar_error(tipo, linea, columna, caracter, token_esperado, descripcion):
+            errores_sintacticos.append({
+                "tipo": tipo,
+                "linea": linea,
+                "columna": columna,
+                "caracter": caracter,
+                "token_esperado": token_esperado,
+                "descripcion": descripcion
+            })
 
-        if token_actual.tipo == "CrearBD":
-            self.emparejar("CrearBD")
-            self.emparejar("Identificador")
-            self.emparejar("Igual")
-            self.emparejar("nueva")
-            self.emparejar("CrearBD")
-            self.emparejar("Punto_Comma")
-        elif token_actual.tipo == "EliminarBD":
-            self.emparejar("EliminarBD")
-            self.emparejar("Identificador")
-            self.emparejar("Igual")
-            self.emparejar("nueva")
-            self.emparejar("EliminarBD")
-            self.emparejar("Punto_Comma")
-        elif token_actual.tipo == "CrearColeccion":
-            self.emparejar("CrearColeccion")
-            self.emparejar("Identificador")
-            self.emparejar("Igual")
-            self.emparejar("nueva")
-            self.emparejar("CrearColeccion")
-            self.emparejar("Parentesis_A")
-            self.emparejar("Cadena")
-            self.emparejar("Parentesis_C")
-            self.emparejar("Punto_Comma")
-        else:
-            self.error(f"Instrucción no válida: '{token_actual.tipo}'")
-            self.avanzar()
+        estado = 'INICIO'
+        palabra_esperada = None
 
-    def ver_errores(self):
-        if self.errores:
-            table = PrettyTable(["Tipo de Error", "Línea", "Columna", "Caracter", "Token Esperado", "Descripción"])
-            for error in self.errores:
-                table.add_row([error["tipo"], error["linea"], error["columna"], error["caracter"], error.get("token_esperado", ""), error.get("descripcion", "")])
-            print(table)
-        else:
-            print("No se encontraron errores.")
+        for token in tokens:
+            if estado == 'INICIO':
+                if token.tipo == 'Reservada':
+                    if token.contenido not in self.palabras_reservadas:
+                        agregar_error("Sintactico", token.linea, token.columna, token.contenido, None,
+                                      f"Palabra reservada incorrecta: {token.contenido}")
+                elif token.tipo == 'Parentesis_A':
+                    estado = 'INSIDE_FUNC'
+                    palabra_esperada = 'Reservada'
+                elif token.tipo == 'Parentesis_C' or token.tipo == 'Llave_C':
+                    agregar_error("Sintactico", token.linea, token.columna, token.contenido, token.contenido,
+                                  f"Símbolo de cierre '{token.contenido}' inesperado")
+            elif estado == 'INSIDE_FUNC':
+                if token.tipo == palabra_esperada:
+                    estado = 'AFTER_FUNC'
+                    palabra_esperada = 'Parentesis_C' if token.contenido == '(' else 'Parentesis_A'
+                elif token.tipo == 'Parentesis_A':
+                    agregar_error("Sintactico", token.linea, token.columna, token.contenido, palabra_esperada,
+                                  f"Se esperaba '{palabra_esperada}' en lugar de '{token.contenido}'")
+                elif token.tipo == 'Parentesis_C' or token.tipo == 'Llave_C':
+                    agregar_error("Sintactico", token.linea, token.columna, token.contenido, token.contenido,
+                                  f"Símbolo de cierre '{token.contenido}' inesperado")
+            elif estado == 'AFTER_FUNC':
+                if token.tipo == palabra_esperada:
+                    estado = 'INICIO'
+                    palabra_esperada = None
+                elif token.tipo == 'Parentesis_A':
+                    agregar_error("Sintactico", token.linea, token.columna, token.contenido, palabra_esperada,
+                                  f"Se esperaba '{palabra_esperada}' en lugar de '{token.contenido}'")
+                elif token.tipo == 'Parentesis_C' or token.tipo == 'Llave_C':
+                    agregar_error("Sintactico", token.linea, token.columna, token.contenido, token.contenido,
+                                  f"Símbolo de cierre '{token.contenido}' inesperado")
+
+        return errores_sintacticos
